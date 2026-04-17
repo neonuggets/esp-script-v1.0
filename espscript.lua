@@ -1,6 +1,8 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
@@ -20,7 +22,139 @@ local MIN_BOX_HEIGHT   = 20
 local MAX_DISTANCE     = 500
 
 local espElements = {}
+local espEnabled = true
 
+-- ===== TOAST NOTIFICATION SYSTEM =====
+local function showToast(message)
+    -- Remove old toast if it exists so they don't overlap clunkily
+    local existingToast = PlayerGui:FindFirstChild("NBHubToast")
+    if existingToast then existingToast:Destroy() end
+
+    local TOAST_WIDTH   = 260
+    local TOAST_HEIGHT  = 54
+    local PADDING_RIGHT = 16
+    local PADDING_BOT   = 16
+    local DISPLAY_TIME  = 3.5
+    local TWEEN_IN      = 0.45
+    local TWEEN_OUT     = 0.4
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "NBHubToast"
+    screenGui.ResetOnSpawn = false
+    screenGui.DisplayOrder = 9999
+    screenGui.IgnoreGuiInset = true
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = PlayerGui
+
+    local card = Instance.new("Frame")
+    card.Name = "ToastCard"
+    card.Size = UDim2.new(0, TOAST_WIDTH, 0, TOAST_HEIGHT)
+    card.BackgroundTransparency = 1
+    card.BorderSizePixel = 0
+    card.AnchorPoint = Vector2.new(1, 1)
+    card.Position = UDim2.new(1, TOAST_WIDTH + PADDING_RIGHT, 1, -PADDING_BOT)
+    card.Parent = screenGui
+
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    bg.BackgroundTransparency = 0 
+    bg.BorderSizePixel = 0
+    bg.ZIndex = 1
+    bg.Parent = card
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+
+    local accent = Instance.new("Frame")
+    accent.Size = UDim2.new(0, 3, 0.7, 0)
+    accent.Position = UDim2.new(0, 0, 0.15, 0)
+    accent.BackgroundColor3 = Color3.fromRGB(60, 210, 120)
+    accent.BorderSizePixel = 0
+    accent.ZIndex = 3
+    accent.Parent = card
+    Instance.new("UICorner", accent).CornerRadius = UDim.new(1, 0)
+
+    local content = Instance.new("Frame")
+    content.Size = UDim2.new(1, -16, 1, 0)
+    content.Position = UDim2.new(0, 13, 0, 0)
+    content.BackgroundTransparency = 1
+    content.ZIndex = 3
+    content.Parent = card
+
+    local nbLabel = Instance.new("TextLabel")
+    nbLabel.Size = UDim2.new(0, 28, 0, 18)
+    nbLabel.Position = UDim2.new(0, 0, 0, 9)
+    nbLabel.BackgroundTransparency = 1
+    nbLabel.Text = "NB"
+    nbLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nbLabel.TextStrokeColor3 = Color3.fromRGB(255, 255, 255)
+    nbLabel.TextStrokeTransparency = 0.7
+    nbLabel.Font = Enum.Font.GothamBold
+    nbLabel.TextSize = 13
+    nbLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nbLabel.ZIndex = 4
+    nbLabel.Parent = content
+
+    local hubLabel = Instance.new("TextLabel")
+    hubLabel.Size = UDim2.new(0, 80, 0, 18)
+    hubLabel.Position = UDim2.new(0, 26, 0, 9)
+    hubLabel.BackgroundTransparency = 1
+    hubLabel.Text = " Hub"
+    hubLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+    hubLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    hubLabel.TextStrokeTransparency = 0.6
+    hubLabel.Font = Enum.Font.GothamBold
+    hubLabel.TextSize = 13
+    hubLabel.TextXAlignment = Enum.TextXAlignment.Left
+    hubLabel.ZIndex = 4
+    hubLabel.Parent = content
+
+    local msgLabel = Instance.new("TextLabel")
+    msgLabel.Size = UDim2.new(1, -4, 0, 16)
+    msgLabel.Position = UDim2.new(0, 0, 0, 29)
+    msgLabel.BackgroundTransparency = 1
+    msgLabel.Text = message
+    msgLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    msgLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    msgLabel.TextStrokeTransparency = 0.5
+    msgLabel.Font = Enum.Font.Gotham
+    msgLabel.TextSize = 11
+    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
+    msgLabel.ZIndex = 4
+    msgLabel.Parent = content
+
+    local rainbowRunning = true
+    task.spawn(function()
+        local hue = 0
+        while rainbowRunning do
+            hue = (hue + 0.008) % 1
+            nbLabel.TextColor3 = Color3.fromHSV(hue, 0.55, 1)
+            nbLabel.TextStrokeColor3 = Color3.fromHSV(hue, 0.4, 1)
+            RunService.Heartbeat:Wait()
+        end
+    end)
+
+    local tweenIn = TweenService:Create(card,
+        TweenInfo.new(TWEEN_IN, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+        { Position = UDim2.new(1, -PADDING_RIGHT, 1, -PADDING_BOT) }
+    )
+    tweenIn:Play()
+
+    task.delay(DISPLAY_TIME, function()
+        rainbowRunning = false
+        local tweenOut = TweenService:Create(card,
+            TweenInfo.new(TWEEN_OUT, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+            { Position = UDim2.new(1, TOAST_WIDTH + PADDING_RIGHT, 1, -PADDING_BOT) }
+        )
+        tweenOut:Play()
+        tweenOut.Completed:Connect(function()
+            if screenGui and screenGui.Parent then
+                screenGui:Destroy()
+            end
+        end)
+    end)
+end
+
+-- ===== ESP UTILS =====
 local function getScreenGui()
     local gui = PlayerGui:FindFirstChild("EspGui")
     if not gui then
@@ -225,8 +359,32 @@ Players.PlayerRemoving:Connect(function(player)
     destroyEsp(player)
 end)
 
+-- ===== TOGGLE INPUT =====
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    -- ensure they aren't typing in chat
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Semicolon then
+        espEnabled = not espEnabled
+        if espEnabled then
+            showToast("ESP Enabled!")
+        else
+            showToast("ESP Disabled!")
+        end
+    end
+end)
+
+-- ===== MAIN LOOP =====
 RunService.RenderStepped:Connect(function()
     Camera = Workspace.CurrentCamera -- refresh camera reference each frame
+    
+    local gui = PlayerGui:FindFirstChild("EspGui")
+    
+    if not espEnabled then
+        if gui then gui.Enabled = false end
+        return -- Suspend maths when toggled off to save FPS!
+    else
+        if gui then gui.Enabled = true end
+    end
+
     for player, esp in pairs(espElements) do
         local character = player.Character
         if not character or not character.Parent then
@@ -239,6 +397,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+-- ===== CLEANUP ON DEATH/DESTROY =====
 LocalPlayer.AncestryChanged:Connect(function(_, parent)
     if parent then return end
     for player in pairs(espElements) do
@@ -247,140 +406,6 @@ LocalPlayer.AncestryChanged:Connect(function(_, parent)
     local gui = PlayerGui:FindFirstChild("EspGui")
     if gui then gui:Destroy() end
 end)
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-
-local TOAST_WIDTH   = 260
-local TOAST_HEIGHT  = 54
-local PADDING_RIGHT = 16
-local PADDING_BOT   = 16
-local DISPLAY_TIME  = 3.5
-local TWEEN_IN      = 0.45
-local TWEEN_OUT     = 0.4
-
-
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "NBHubToast"
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 9999
-screenGui.IgnoreGuiInset = true
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = PlayerGui
-
-local card = Instance.new("Frame")
-card.Name = "ToastCard"
-card.Size = UDim2.new(0, TOAST_WIDTH, 0, TOAST_HEIGHT)
-card.BackgroundTransparency = 1
-card.BorderSizePixel = 0
-card.AnchorPoint = Vector2.new(1, 1)
-card.Position = UDim2.new(1, TOAST_WIDTH + PADDING_RIGHT, 1, -PADDING_BOT)
-card.Parent = screenGui
-
-
-local bg = Instance.new("Frame")
-bg.Size = UDim2.new(1, 0, 1, 0)
-bg.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-bg.BackgroundTransparency = 0 
-bg.BorderSizePixel = 0
-bg.ZIndex = 1
-bg.Parent = card
-Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
-
--- Left accent bar (softer green)
-local accent = Instance.new("Frame")
-accent.Size = UDim2.new(0, 3, 0.7, 0)
-accent.Position = UDim2.new(0, 0, 0.15, 0)
-accent.BackgroundColor3 = Color3.fromRGB(60, 210, 120)
-accent.BorderSizePixel = 0
-accent.ZIndex = 3
-accent.Parent = card
-Instance.new("UICorner", accent).CornerRadius = UDim.new(1, 0)
-
--- Content container
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1, -16, 1, 0)
-content.Position = UDim2.new(0, 13, 0, 0)
-content.BackgroundTransparency = 1
-content.ZIndex = 3
-content.Parent = card
-
--- "NB"
-local nbLabel = Instance.new("TextLabel")
-nbLabel.Size = UDim2.new(0, 28, 0, 18)
-nbLabel.Position = UDim2.new(0, 0, 0, 9)
-nbLabel.BackgroundTransparency = 1
-nbLabel.Text = "NB"
-nbLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-nbLabel.TextStrokeColor3 = Color3.fromRGB(255, 255, 255)
-nbLabel.TextStrokeTransparency = 0.7
-nbLabel.Font = Enum.Font.GothamBold
-nbLabel.TextSize = 13
-nbLabel.TextXAlignment = Enum.TextXAlignment.Left
-nbLabel.ZIndex = 4
-nbLabel.Parent = content
-
--- "Hub"
-local hubLabel = Instance.new("TextLabel")
-hubLabel.Size = UDim2.new(0, 80, 0, 18)
-hubLabel.Position = UDim2.new(0, 26, 0, 9)
-hubLabel.BackgroundTransparency = 1
-hubLabel.Text = " Hub"
-hubLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
-hubLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-hubLabel.TextStrokeTransparency = 0.6
-hubLabel.Font = Enum.Font.GothamBold
-hubLabel.TextSize = 13
-hubLabel.TextXAlignment = Enum.TextXAlignment.Left
-hubLabel.ZIndex = 4
-hubLabel.Parent = content
-
--- Message
-local msgLabel = Instance.new("TextLabel")
-msgLabel.Size = UDim2.new(1, -4, 0, 16)
-msgLabel.Position = UDim2.new(0, 0, 0, 29)
-msgLabel.BackgroundTransparency = 1
-msgLabel.Text = "Activated ESP Script, enjoy!"
-msgLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-msgLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-msgLabel.TextStrokeTransparency = 0.5
-msgLabel.Font = Enum.Font.Gotham
-msgLabel.TextSize = 11
-msgLabel.TextXAlignment = Enum.TextXAlignment.Left
-msgLabel.ZIndex = 4
-msgLabel.Parent = content
-
-
-local rainbowRunning = true
-task.spawn(function()
-    local hue = 0
-    while rainbowRunning do
-        hue = (hue + 0.008) % 1
-   
-        nbLabel.TextColor3 = Color3.fromHSV(hue, 0.55, 1)
-        nbLabel.TextStrokeColor3 = Color3.fromHSV(hue, 0.4, 1)
-        RunService.Heartbeat:Wait()
-    end
-end)
-
-local tweenIn = TweenService:Create(card,
-    TweenInfo.new(TWEEN_IN, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-    { Position = UDim2.new(1, -PADDING_RIGHT, 1, -PADDING_BOT) }
-)
-tweenIn:Play()
-
-
-task.delay(DISPLAY_TIME, function()
-    rainbowRunning = false
-    local tweenOut = TweenService:Create(card,
-        TweenInfo.new(TWEEN_OUT, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-        { Position = UDim2.new(1, TOAST_WIDTH + PADDING_RIGHT, 1, -PADDING_BOT) }
-    )
-    tweenOut:Play()
-    tweenOut.Completed:Connect(function()
-        screenGui:Destroy()
-    end)
-end)
+-- Initial welcome message
+showToast("Activated ESP Script, enjoy!")
